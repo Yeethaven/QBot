@@ -24,9 +24,18 @@ def load_scoreboard():
     scoreboard = load(open(filepath, 'rb'))
     return
 
+def update_channelid(newid : int):
+    with open("./src/variables.py", 'r') as variables:
+        lines = variables.readlines()
+        lines[3] = f"channelid = {newid}"
+
+        with open("./src/variables.py", 'r') as variables:
+            variables.writelines(lines)
+
+    return
+
 def update_scoreboard(msg : dc.message):
     """Updates the scoreboard variable (not the file). This method does so regardless of channel"""
-    #print_scoreboard()
     if msg.author.bot: # ignore bot messages
         return
     auth = msg.author.id # message author
@@ -36,7 +45,7 @@ def update_scoreboard(msg : dc.message):
         if scoreboard.has_edge(auth, mid):
             scoreboard[auth][mid]['weight'] += 1
         else:
-            print("adding edge")
+            debug("adding edge")
             scoreboard.add_edge(auth, mid, weight=1)        
 
     #print_scoreboard()
@@ -72,9 +81,10 @@ def format_leaderboard(leaderboard: list((int, int))):
     #t.set_deco(Texttable.BORDER | Texttable.HEADER)
         
     for entry in leaderboard:
-        t.add_row([f"<@{entry[0]}>", entry[1]])
+        #t.add_row([f"<@{entry[0]}>", entry[1]])
+        t.add_row([entry[0], entry[1]])
 
-    print(t.draw())
+    debug(t.draw())
     return "```\n"+t.draw()+"```" # TODO this, of course, messes up pings
 
 def get_client():
@@ -88,7 +98,7 @@ def get_client():
     @client.event
     async def on_ready():
         global scoreboard
-        print(f'{client.user} has connected to Discord!')
+        debug(f'{client.user} has connected to Discord!')
         ch = await client.fetch_channel(channelid)
         scoreboard = nx.DiGraph()
         await update_by_history(ch)
@@ -98,19 +108,20 @@ def get_client():
     async def on_message(message : dc.Message):
         if message.author.bot: # ignore bot messages
             return
-        print(f'-----\nreceived message "{message.author.display_name}: {message.content}" in channel {message.channel.id}')
+        debug(f'-----\nreceived message "{message.author.display_name}: {message.content}" in channel {message.channel.id}')
 
         #TODO make channelid dynamic, settable via command
         if not message.channel.id == channelid:
-            print("Wrong channel, skipping.")
+            debug("Wrong channel, skipping.")
             return
                 
         update_scoreboard(message)
 
-    @client.command(
+    @client.command( #TODO this command doesn't show in discord
         description="set the channel to be watched [WIP]"
     )
     async def set_channelid(ctx):
+        #TODO use update_channelid, only if user is admin
         await ctx.respond("bruh")
 
     sc_coms = client.create_group("scoreboard", "get personal or global scoreboards")
@@ -123,7 +134,9 @@ def get_client():
     async def full(ctx:dc.ApplicationContext):
         nlist = sorted(scoreboard.nodes)
         mat = nx.to_numpy_array(scoreboard, nlist, dtype=str)
-        nlist_t = [(await client.get_or_fetch_user(uid)).name for uid in nlist] # nodelist translated into names
+        #nlist_t = [(await client.get_or_fetch_user(uid)).name for uid in nlist] # nodelist translated into names
+        g = ctx.guild
+        nlist_t = [(await g.fetch_member(uid)).display_name for uid in nlist] # nodelist translated into display names
 
         t = Texttable()
         alignment = ["c"] * (len(nlist_t) + 1)
@@ -132,13 +145,12 @@ def get_client():
         t.set_max_width(0)
         t.header(["quoter \ quoted"] + nlist_t)
         t.set_deco(Texttable.BORDER | Texttable.HEADER)
-        #t.add_row([""] + nlist_t)
         
         for i, name in enumerate(nlist_t):
             row = np.concatenate(([name], mat[i]))
             t.add_row(row)
         
-        print(t.draw())
+        debug(t.draw())
         await ctx.respond("```\n"+t.draw()+"```")
 
     @me.command(
@@ -146,8 +158,9 @@ def get_client():
     )
     async def quoted(ctx:dc.ApplicationContext):
         leaderboard = []
+        g = ctx.guild
         for usr, _, data in scoreboard.in_edges(ctx.author.id, data=True):
-            leaderboard.append((usr, data['weight']))
+            leaderboard.append(((await g.fetch_member(usr)).display_name, data['weight']))
         
         await ctx.respond("You have been quoted by these people the most:\n" + format_leaderboard(leaderboard))
 
@@ -156,8 +169,9 @@ def get_client():
     )
     async def quotes(ctx:dc.ApplicationContext):
         leaderboard = []
+        g = ctx.guild
         for _, usr, data in scoreboard.out_edges(ctx.author.id, data=True):
-            leaderboard.append((usr, data['weight']))
+            leaderboard.append(((await g.fetch_member(usr)).display_name, data['weight']))
         
         await ctx.respond("You have quoted these people the most:\n" + format_leaderboard(leaderboard))
 
@@ -166,13 +180,14 @@ def get_client():
     )
     async def quotees(ctx:dc.ApplicationContext):
         leaderboard = []
-        for usr, nbrdict in scoreboard.adjacency():
+        g = ctx.guild
+        for usr, _ in scoreboard.adjacency():
             incoming = scoreboard.in_edges(usr, data=True)
             score = 0
             for entry in incoming:
                 score += entry[2]['weight']
             
-            leaderboard.append((usr, score))
+            leaderboard.append(((await g.fetch_member(usr)).display_name, score))
 
         await ctx.respond("These people have been quoted the most:\n" + format_leaderboard(leaderboard))
 
@@ -181,12 +196,13 @@ def get_client():
     )
     async def quoters(ctx:dc.ApplicationContext):
         leaderboard = []
+        g = ctx.guild
         for usr, nbrdict in scoreboard.adjacency():
             score = 0
             for entry in nbrdict:
                 score += nbrdict[entry]['weight']
             
-            leaderboard.append((usr, score))
+            leaderboard.append(((await g.fetch_member(usr)).display_name, score))
 
         await ctx.respond("These people have written the most quotes:\n" + format_leaderboard(leaderboard))
 
@@ -204,13 +220,14 @@ def main():
     return
 
 def print_scoreboard():
-    global scoreboard
-    print(scoreboard)
-    for n, nbrdict in scoreboard.adjacency():
-        print(n, nbrdict)
+    if DEBUG:
+        global scoreboard
+        debug(scoreboard)
+        for n, nbrdict in scoreboard.adjacency():
+            debug(n, nbrdict)
     return
 
-def clear_scoreboard():
+def clear_scoreboard_file():
     global scoreboard
     scoreboard = nx.DiGraph()
     save_scoreboard()
@@ -224,10 +241,10 @@ if __name__ == "__main__":
     #load_scoreboard()
     #nlist = sorted(scoreboard.nodes)
     #arr = np.concatenate(([nlist], nx.to_numpy_array(scoreboard, nlist, dtype=int)))
-    #print(arr)
+    #debug(arr)
     #nlist = [-1] + nlist
     #for i, line in enumerate(arr):
-    #    print(f"{nlist[i]}  {line}")
+    #    debug(f"{nlist[i]}  {line}")
 
     #c = get_client()
     #print_scoreboard()
