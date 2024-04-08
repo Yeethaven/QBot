@@ -85,7 +85,7 @@ def format_leaderboard(leaderboard: list((int, int))):
         t.add_row([entry[0], entry[1]])
 
     debug(t.draw())
-    return "```\n"+t.draw()+"```" # TODO this, of course, messes up pings
+    return "```\n"+t.draw()+"```" # this, of course, messes up pings - so we use display_name insted
 
 def get_client():
     intents = dc.Intents.none()
@@ -110,7 +110,6 @@ def get_client():
             return
         debug(f'-----\nreceived message "{message.author.display_name}: {message.content}" in channel {message.channel.id}')
 
-        #TODO make channelid dynamic, settable via command
         if not message.channel.id == channelid:
             debug("Wrong channel, skipping.")
             return
@@ -201,12 +200,25 @@ def get_client():
             score = 0
             for entry in nbrdict:
                 score += nbrdict[entry]['weight']
-            
-            leaderboard.append(((await g.fetch_member(usr)).display_name, score))
+
+            #name = await get_name(g, usr, client)
+            leaderboard.append(((await get_name(g, usr, client)), score))
+            #leaderboard.append(((await g.fetch_member(usr)).display_name, score))
 
         await ctx.respond("These people have written the most quotes:\n" + format_leaderboard(leaderboard))
 
     return client
+
+async def get_name(g:dc.Guild, uid:int, client:commands.Bot):
+    try:
+        name = (await g.fetch_member(uid)).display_name
+    except dc.errors.NotFound:
+        try:
+            name = (await client.get_or_fetch_user(uid)).name
+        except:
+            name = "[deleted]"
+
+    return name
 
 def main():
     """Start the bot"""
@@ -224,7 +236,8 @@ def print_scoreboard():
         global scoreboard
         debug(scoreboard)
         for n, nbrdict in scoreboard.adjacency():
-            debug(n, nbrdict)
+            debug(n)
+            debug(nbrdict)
     return
 
 def clear_scoreboard_file():
