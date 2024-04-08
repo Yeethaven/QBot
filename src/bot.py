@@ -148,7 +148,8 @@ def get_client():
     async def full(ctx:dc.ApplicationContext):
         tempmsg = (await ctx.respond("Working on it!"))
         nlist = sorted(scoreboard.nodes)
-        mat = nx.to_numpy_array(scoreboard, nlist, dtype=str)
+        mat = nx.to_numpy_array(scoreboard, nlist, dtype=int).astype(str)
+        
         nlist_t = [(await get_name(ctx.guild, uid, client)) for uid in nlist] # nodelist translated into names
 
         t = Texttable()
