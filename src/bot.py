@@ -7,6 +7,8 @@ from variables import *
 from pickle import dump, load
 import numpy as np
 from texttable import Texttable
+import json
+from vis import visualize
 
 scoreboard = nx.DiGraph()
 
@@ -92,6 +94,32 @@ def format_leaderboard(leaderboard: list((int, int))):
     return "```\n"+t.draw()+"```" # TODO: if this is >2000 chars, discord is unhappy - I'm gonna turn a blind eye to that
 
 async def get_name(g:dc.Guild, uid:int, client:commands.Bot):
+    '''Translates between uid and name. It does so by looking for a translation
+    in namefile; if none is found, it makes an API call to discord and stores
+    the result in namefile.
+    Params
+    ------
+    g: dc.Guild
+        The Guild the username should be looked up in
+
+    uid: int
+        ID of the user
+
+    client: commands.bot
+        The Bot
+
+    Returns
+    -------
+    The display name of the user in the guild. If the uid isn't found in the specified
+    guild (user leaving or no access to guild), the discord username is returned
+    
+    '''
+    with open(namefile, "r") as file:
+            names = json.load(file)
+
+    if str(uid) in names:
+        return names[str(uid)]
+    
     try:
         name = (await g.fetch_member(uid)).display_name
     except dc.errors.NotFound:
@@ -99,6 +127,10 @@ async def get_name(g:dc.Guild, uid:int, client:commands.Bot):
             name = (await client.get_or_fetch_user(uid)).name
         except:
             name = "[deleted]"
+
+    names[str(uid)] = name
+    with open(namefile, "w") as file:
+        json.dump(names, file)
 
     return name
 
@@ -171,6 +203,8 @@ def get_client():
                 file.write(response)
             await ctx.send(file=dc.File("./data/table.txt"))
             os.remove("./data/table.txt")
+            visualize(scoreboard)
+            await ctx.send(file=dc.File("./data/plot.png"))
         else:
             await ctx.send("```\n"+response+"```")
         await tempmsg.delete_original_response()
